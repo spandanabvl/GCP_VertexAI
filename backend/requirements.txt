@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+python-multipart
+dotenv
+google-cloud-storage 
+google-cloud-discoveryengine
+google-cloud-aiplatform
