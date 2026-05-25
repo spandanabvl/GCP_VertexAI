@@ -7,6 +7,8 @@ import FSSidebar    from "./components/FSSidebar";
 import FSChatWindow from "./components/FSChatWindow";
 import VSSidebar    from "./components/VSSidebar";
 import VSChatWindow from "./components/VSChatWindow";
+import VSR2Sidebar    from "./components/VSR2Sidebar";
+import VSR2ChatWindow from "./components/VSR2ChatWindow";
 import "./index.css";
 
 export default function App() {
@@ -30,6 +32,15 @@ export default function App() {
   const handleVsrNewConv = cv => { setVsrConv(cv); setVsrCount(n => n + 1); };
   const handleVsrSelConv = cv => setVsrConv(cv);
   const handleVsrDelConv = () => { setVsrConv(null); setVsrCount(n => n + 1); };
+
+   // ── Vector Search RAG 2.0 (Serverless) ────────────────────────────────────
+   const [vsr2Corpus,    setVsr2Corpus]    = useState(null);
+   const [vsr2Conv,      setVsr2Conv]      = useState(null);
+   const [vsr2Count,     setVsr2Count]     = useState(0);
+   const handleVsr2Corpus  = c  => { setVsr2Corpus(c);  setVsr2Conv(null); };
+   const handleVsr2NewConv = cv => { setVsr2Conv(cv);   setVsr2Count(n => n + 1); };
+   const handleVsr2SelConv = cv => setVsr2Conv(cv);
+   const handleVsr2DelConv = () => { setVsr2Conv(null); setVsr2Count(n => n + 1); };
 
   // ── Feature Store RAG ──────────────────────────────────────────────────────
   const [fsCorpus,     setFsCorpus]     = useState(null);
@@ -75,6 +86,14 @@ export default function App() {
               <line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
             Vector Search RAG
+          </button>
+
+          {/* 3 — Vector Search RAG 2.0 — immediately after VS1 */}
+          <button className={`mode-toggle-btn ${ragMode === "vsr2" ? "active" : ""}`} onClick={() => setRagMode("vsr2")}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            Vector Search 2.0
           </button>
 
           {/* 3 — Feature Store RAG */}
@@ -136,6 +155,27 @@ export default function App() {
                 activeConversation={vsrConv}
                 onNewConversation={handleVsrNewConv}
                 onDeleteConversation={handleVsrDelConv}
+              />
+            </main>
+          </>
+        )}
+
+        {/* 4 — Vector Search RAG 2.0 (Serverless) */}
+        {ragMode === "vsr2" && (
+          <>
+            <VSR2Sidebar
+              selectedCorpus={vsr2Corpus}
+              onSelectCorpus={handleVsr2Corpus}
+              activeConversation={vsr2Conv}
+              onSelectConversation={handleVsr2SelConv}
+              conversationCount={vsr2Count}
+            />
+            <main className="main-area">
+              <VSR2ChatWindow
+                selectedCorpus={vsr2Corpus}
+                activeConversation={vsr2Conv}
+                onNewConversation={handleVsr2NewConv}
+                onDeleteConversation={handleVsr2DelConv}
               />
             </main>
           </>
