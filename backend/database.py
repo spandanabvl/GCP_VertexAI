@@ -1,7 +1,10 @@
 import os
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+load_dotenv()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -10,6 +13,7 @@ DATABASE_URL = os.getenv(
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
+Base = declarative_base()
 
 
 def get_db():
@@ -18,6 +22,62 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def _migrate_corpus_registry(conn) -> None:
+    """Align legacy corpus_registry columns with current ORM schema."""
+    conn.execute(text("""
+        DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'corpus_registry'
+                  AND column_name = 'ocr_scanned_enabled'
+            ) AND NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'corpus_registry'
+                  AND column_name = 'ocr_enabled'
+            ) THEN
+                ALTER TABLE corpus_registry
+                    RENAME COLUMN ocr_scanned_enabled TO ocr_enabled;
+            END IF;
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'corpus_registry'
+                  AND column_name = 'vertex_reranker_active'
+            ) AND NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'corpus_registry'
+                  AND column_name = 'reranker_enabled'
+            ) THEN
+                ALTER TABLE corpus_registry
+                    RENAME COLUMN vertex_reranker_active TO reranker_enabled;
+            END IF;
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'corpus_registry'
+                  AND column_name = 'prompt_caching_enabled'
+            ) AND NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'corpus_registry'
+                  AND column_name = 'prompt_cache_enabled'
+            ) THEN
+                ALTER TABLE corpus_registry
+                    RENAME COLUMN prompt_caching_enabled TO prompt_cache_enabled;
+            END IF;
+        END $$;
+    """))
+    for col, ddl in (
+        ("advanced_layout_parser", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("ocr_enabled", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("reranker_enabled", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("prompt_cache_enabled", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("multimodal_active", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("total_document_pages", "INTEGER NOT NULL DEFAULT 0"),
+        ("total_documents_count", "INTEGER NOT NULL DEFAULT 0"),
+    ):
+        conn.execute(
+            text(f"ALTER TABLE corpus_registry ADD COLUMN IF NOT EXISTS {col} {ddl}")
+        )
 
 
 def init_db():
@@ -39,8 +99,7 @@ def init_db():
             ON conversations(corpus_name)
         """))
 
-
-         # ── Vertex AI Search: datastore metadata (stores bucket per store) ──
+        # ── Vertex AI Search: datastore metadata (stores bucket per store) ──
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS vs_datastores (
                 id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -138,5 +197,25 @@ def init_db():
             ON vsr_conversations(corpus_name)
         """))
 
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS corpus_registry (
+                id                      SERIAL PRIMARY KEY,
+                name                    TEXT NOT NULL,
+                engine_type             TEXT NOT NULL,
+                gcp_resource_name       TEXT NOT NULL,
+                total_document_pages    INTEGER NOT NULL DEFAULT 0,
+                total_documents_count   INTEGER NOT NULL DEFAULT 0,
+                advanced_layout_parser  BOOLEAN NOT NULL DEFAULT FALSE,
+                ocr_enabled             BOOLEAN NOT NULL DEFAULT FALSE,
+                reranker_enabled        BOOLEAN NOT NULL DEFAULT FALSE,
+                prompt_cache_enabled    BOOLEAN NOT NULL DEFAULT FALSE,
+                multimodal_active       BOOLEAN NOT NULL DEFAULT FALSE
+            )
+        """))
+        _migrate_corpus_registry(conn)
+
         conn.commit()
+
+    import models  # noqa: F401 — register ORM tables
+    Base.metadata.create_all(bind=engine)
 

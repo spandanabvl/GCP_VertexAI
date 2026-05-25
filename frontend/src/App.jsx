@@ -1,4 +1,7 @@
 import { useState } from "react";
+import axios from "axios";
+
+const API = import.meta.env.VITE_API_URL ?? "";
 import Sidebar      from "./components/Sidebar";
 import ChatWindow   from "./components/ChatWindow";
 import VSRSidebar   from "./components/VSRSidebar";
@@ -7,11 +10,108 @@ import FSSidebar    from "./components/FSSidebar";
 import FSChatWindow from "./components/FSChatWindow";
 import VSSidebar    from "./components/VSSidebar";
 import VSChatWindow from "./components/VSChatWindow";
+import MonitoringSidebar from "./components/MonitoringSidebar";
+import MonitoringPanel   from "./components/MonitoringPanel";
 import "./index.css";
 
 export default function App() {
-  // "rag" | "vsr" | "fs" | "vs"  (left → right order in toggle)
+  // "rag" | "vsr" | "fs" | "vs" | "monitoring"
   const [ragMode, setRagMode] = useState("rag");
+
+  // ── Monitoring ─────────────────────────────────────────────────────────────
+  const [monPhase, setMonPhase] = useState("setup");
+  const [monConfig, setMonConfig] = useState(null);
+  const [monQuestions, setMonQuestions] = useState([]);
+  const [monQuestionIndex, setMonQuestionIndex] = useState(0);
+  const [monSessionKey, setMonSessionKey] = useState(0);
+  const [monRun, setMonRun] = useState(null);
+  const [monBenchmark, setMonBenchmark] = useState(null);
+  const [monBenchmarkError, setMonBenchmarkError] = useState(null);
+
+  function handleMonitoringStart({ ragCorpus, vsrCorpus, fsCorpus, questionCount }) {
+    setMonConfig({ ragCorpus, vsrCorpus, fsCorpus, questionCount });
+    setMonQuestions(Array(questionCount).fill(""));
+    setMonQuestionIndex(0);
+    setMonPhase("questions");
+  }
+
+  function handleMonitoringAdvance() {
+    setMonQuestionIndex(i => Math.min(i + 1, (monConfig?.questionCount ?? 1) - 1));
+  }
+
+  async function handleMonitoringSubmit(finalQuestions) {
+    const run = {
+      ragCorpus: monConfig?.ragCorpus,
+      vsrCorpus: monConfig?.vsrCorpus,
+      fsCorpus: monConfig?.fsCorpus,
+      questions: finalQuestions,
+    };
+    setMonQuestions(finalQuestions);
+    setMonRun(run);
+    setMonBenchmark(null);
+    setMonBenchmarkError(null);
+    setMonPhase("processing");
+
+    const targets = [];
+    if (run.ragCorpus?.name) {
+      targets.push({
+        engine_type: "ragmanageddb",
+        corpus_name: run.ragCorpus.name,
+        display_name: run.ragCorpus.display_name ?? "",
+      });
+    }
+    if (run.vsrCorpus?.corpus_name) {
+      targets.push({
+        engine_type: "vector_search_rag",
+        corpus_name: run.vsrCorpus.corpus_name,
+        display_name: run.vsrCorpus.display_name ?? "",
+      });
+    }
+    if (run.fsCorpus?.corpus_name) {
+      targets.push({
+        engine_type: "feature_store_rag",
+        corpus_name: run.fsCorpus.corpus_name,
+        display_name: run.fsCorpus.display_name ?? "",
+      });
+    }
+
+    if (targets.length === 0) {
+      setMonBenchmarkError("Select at least one corpus in the sidebar before submitting.");
+      setMonPhase("results");
+      return;
+    }
+
+    try {
+      const res = await axios.post(`${API}/api/benchmark`, {
+        questions: finalQuestions.filter(q => q.trim()),
+        targets,
+      });
+      setMonBenchmark(res.data);
+      setMonPhase("results");
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      let msg = "Benchmark failed";
+      if (typeof detail === "string") msg = detail;
+      else if (Array.isArray(detail)) {
+        msg = detail.map(d => d.msg || d.message || JSON.stringify(d)).join(". ");
+      } else if (detail) msg = JSON.stringify(detail);
+      else if (e?.message) msg = `${msg}: ${e.message}`;
+      console.error("Benchmark error", e?.response?.data ?? e);
+      setMonBenchmarkError(msg);
+      setMonPhase("results");
+    }
+  }
+
+  function handleMonitoringReset() {
+    setMonPhase("setup");
+    setMonConfig(null);
+    setMonQuestions([]);
+    setMonQuestionIndex(0);
+    setMonRun(null);
+    setMonBenchmark(null);
+    setMonBenchmarkError(null);
+    setMonSessionKey(k => k + 1);
+  }
 
   // ── RAG Managed DB ─────────────────────────────────────────────────────────
   const [selectedCorpus,     setSelectedCorpus]     = useState(null);
@@ -93,6 +193,14 @@ export default function App() {
               <line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
             Vertex AI Search
+          </button>
+
+          {/* 5 — Monitoring */}
+          <button className={`mode-toggle-btn monitoring-toggle ${ragMode === "monitoring" ? "active" : ""}`} onClick={() => setRagMode("monitoring")}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+            </svg>
+            Monitoring
           </button>
 
         </div>
@@ -178,6 +286,29 @@ export default function App() {
                 onDeleteConversation={handleVsDelConv}
               />
             </main>
+          </>
+        )}
+
+        {ragMode === "monitoring" && (
+          <>
+            <MonitoringSidebar
+              key={monSessionKey}
+              phase={monPhase}
+              onStart={handleMonitoringStart}
+              onReset={handleMonitoringReset}
+            />
+            <MonitoringPanel
+              phase={monPhase}
+              config={monConfig}
+              questions={monQuestions}
+              currentIndex={monQuestionIndex}
+              onUpdateQuestions={setMonQuestions}
+              onAdvance={handleMonitoringAdvance}
+              onSubmit={handleMonitoringSubmit}
+              benchmarkResult={monBenchmark}
+              benchmarkError={monBenchmarkError}
+              onReset={handleMonitoringReset}
+            />
           </>
         )}
 

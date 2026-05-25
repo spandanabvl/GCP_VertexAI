@@ -18,6 +18,7 @@ export default defineConfig({
       '/vsr-corpora':   'http://localhost:8000',
       '/vsr-documents': 'http://localhost:8000',
       '/vsr-chat':      'http://localhost:8000',
+      '/api':           'http://localhost:8000',
     }
   }
 })
