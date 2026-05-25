@@ -10,6 +10,7 @@ from routers import corpora, documents, chat
 from routers import vs_datastores, vs_documents, vs_chat
 from routers import fs_corpora, fs_documents, fs_chat
 from routers import vsr_corpora, vsr_documents, vsr_chat
+from routers import vsr2_corpora, vsr2_documents, vsr2_chat
 
 
 @asynccontextmanager
@@ -39,3 +40,8 @@ app.include_router(fs_chat.router,      prefix="/fs-chat")
 app.include_router(vsr_corpora.router,   prefix="/vsr-corpora")
 app.include_router(vsr_documents.router, prefix="/vsr-documents")
 app.include_router(vsr_chat.router,      prefix="/vsr-chat")
+
+# ── Vector Search RAG 2.0 (Serverless) ────────────────────────────────────────
+app.include_router(vsr2_corpora.router,   prefix="/vsr2-corpora")
+app.include_router(vsr2_documents.router, prefix="/vsr2-documents")
+app.include_router(vsr2_chat.router,      prefix="/vsr2-chat")
