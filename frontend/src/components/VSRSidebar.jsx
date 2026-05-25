@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import { dispatchFlow, runFlowAnimation, corpusRef } from "../notesFlowEvents";
 
 const API = "http://localhost:8000";
 
@@ -95,8 +96,20 @@ export default function VSRSidebar({
   async function deleteCorpus(corpus) {
     const ok = window.confirm(`Delete corpus "${corpus.display_name}"? All documents will be removed. This cannot be undone.`);
     if (!ok) return;
+    const ref = corpusRef("vsr", corpus);
     try {
-      await axios.delete(`${API}/vsr-corpora/`, { params: { corpus_name: corpus.corpus_name } });
+      await runFlowAnimation(
+        "vsr",
+        "delete_corpus",
+        ref,
+        [
+          { step: "files", message: "Deleting files…" },
+          { step: "corpus", message: "Deleting corpus…" },
+          { step: "index", message: "Tearing down Vector Search…" },
+          { step: "postgres", message: "Removing metadata…" },
+        ],
+        () => axios.delete(`${API}/vsr-corpora/`, { params: { corpus_name: corpus.corpus_name } })
+      );
       setCorpora(prev => prev.filter(c => c.corpus_name !== corpus.corpus_name));
       if (selectedCorpus?.corpus_name === corpus.corpus_name) {
         onSelectCorpus(null);
@@ -134,16 +147,60 @@ export default function VSRSidebar({
     if (!file || !selectedCorpus) return;
     setUploading(true);
     setError(null);
+    const ref = corpusRef("vsr", selectedCorpus);
+    dispatchFlow({
+      engine: "vsr",
+      action: "upload",
+      phase: "uploading",
+      filename: file.name,
+      progress: 0,
+      ...ref,
+    });
     const formData = new FormData();
     formData.append("file", file);
     try {
       const res = await axios.post(`${API}/vsr-documents/upload`, formData, {
         params: { corpus_name: selectedCorpus.corpus_name },
         headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: ev => {
+          const progress = ev.total ? Math.round((ev.loaded * 100) / ev.total) : 0;
+          dispatchFlow({
+            engine: "vsr",
+            action: "upload",
+            phase: "uploading",
+            filename: file.name,
+            progress,
+            ...ref,
+          });
+        },
+      });
+      dispatchFlow({
+        engine: "vsr",
+        action: "upload",
+        phase: "indexing",
+        filename: file.name,
+        file: res.data,
+        highlightDoc: res.data.display_name || file.name,
+        ...ref,
       });
       setFiles(prev => [...prev, { name: res.data.name, display_name: res.data.display_name }]);
+      dispatchFlow({
+        engine: "vsr",
+        action: "upload",
+        phase: "complete",
+        highlightDoc: res.data.display_name || file.name,
+        ...ref,
+      });
     } catch {
       setError("Upload failed. Check file type and corpus.");
+      dispatchFlow({
+        engine: "vsr",
+        action: "upload",
+        phase: "error",
+        filename: file.name,
+        error: "Upload failed",
+        ...ref,
+      });
     } finally {
       setUploading(false);
       fileInputRef.current.value = "";
@@ -153,11 +210,22 @@ export default function VSRSidebar({
   async function deleteFile(f) {
     const ok = window.confirm(`Delete "${f.display_name}"? This cannot be undone.`);
     if (!ok) return;
+    const ref = corpusRef("vsr", selectedCorpus);
+    dispatchFlow({
+      engine: "vsr",
+      action: "delete_file",
+      phase: "deleting",
+      filename: f.display_name,
+      removeDoc: f.display_name,
+      ...ref,
+    });
     try {
       await axios.delete(`${API}/vsr-documents/`, { params: { file_name: f.name } });
       setFiles(prev => prev.filter(file => file.name !== f.name));
+      dispatchFlow({ engine: "vsr", action: "delete_file", phase: "complete", ...ref });
     } catch {
       setError("Failed to delete file");
+      dispatchFlow({ engine: "vsr", action: "delete_file", phase: "error", error: "Delete failed", ...ref });
     }
   }
 

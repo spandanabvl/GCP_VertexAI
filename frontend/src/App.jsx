@@ -7,10 +7,11 @@ import FSSidebar    from "./components/FSSidebar";
 import FSChatWindow from "./components/FSChatWindow";
 import VSSidebar    from "./components/VSSidebar";
 import VSChatWindow from "./components/VSChatWindow";
+import NotesView    from "./components/NotesView";
 import "./index.css";
 
 export default function App() {
-  // "rag" | "vsr" | "fs" | "vs"  (left → right order in toggle)
+  // "rag" | "vsr" | "fs" | "vs" | "notes"  (left → right order in toggle)
   const [ragMode, setRagMode] = useState("rag");
 
   // ── RAG Managed DB ─────────────────────────────────────────────────────────
@@ -93,6 +94,17 @@ export default function App() {
               <line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
             Vertex AI Search
+          </button>
+
+          {/* 5 — Notes (architecture) */}
+          <button className={`mode-toggle-btn ${ragMode === "notes" ? "active" : ""}`} onClick={() => setRagMode("notes")}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            Notes
           </button>
 
         </div>
@@ -180,6 +192,10 @@ export default function App() {
             </main>
           </>
         )}
+
+        <div className={`notes-layer ${ragMode === "notes" ? "notes-layer--open" : ""}`}>
+          <NotesView />
+        </div>
 
       </div>
     </div>
