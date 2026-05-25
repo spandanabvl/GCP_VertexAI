@@ -11,6 +11,7 @@ from routers import vs_datastores, vs_documents, vs_chat
 from routers import fs_corpora, fs_documents, fs_chat
 from routers import vsr_corpora, vsr_documents, vsr_chat
 from routers import benchmark
+from routers import vsr2_corpora, vsr2_documents, vsr2_chat
 
 
 @asynccontextmanager
@@ -43,3 +44,7 @@ app.include_router(vsr_chat.router,      prefix="/vsr-chat")
 
 # ── RAG Benchmark & Telemetry ───────────────────────────────────────────────────
 app.include_router(benchmark.router, prefix="/api")
+# ── Vector Search RAG 2.0 (Serverless) ────────────────────────────────────────
+app.include_router(vsr2_corpora.router,   prefix="/vsr2-corpora")
+app.include_router(vsr2_documents.router, prefix="/vsr2-documents")
+app.include_router(vsr2_chat.router,      prefix="/vsr2-chat")

@@ -214,7 +214,34 @@ def init_db():
         """))
         _migrate_corpus_registry(conn)
 
+        # ── Vector Search 2.0 (Serverless): corpus metadata ───────────────
+        # No index/endpoint needed — fully managed by GCP serverless infra.
+        # Must use us-central1 location.
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS vsr2_corpora (
+                id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                corpus_name  TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                created_at   TIMESTAMPTZ DEFAULT NOW()
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS vsr2_conversations (
+                id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                corpus_name  TEXT NOT NULL,
+                title        TEXT,
+                messages     JSONB NOT NULL DEFAULT '[]'::jsonb,
+                created_at   TIMESTAMPTZ DEFAULT NOW(),
+                updated_at   TIMESTAMPTZ DEFAULT NOW()
+            )
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_vsr2_conversations_corpus
+            ON vsr2_conversations(corpus_name)
+        """))
+ 
         conn.commit()
+ 
 
     import models  # noqa: F401 — register ORM tables
     Base.metadata.create_all(bind=engine)
