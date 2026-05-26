@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { Trash2 } from "lucide-react";
+import { dispatchFlow, corpusRef } from "../notesFlowEvents";
+import { runBackendFlowStream, uploadWithFlowStream } from "../flowStream";
 
 const API = "http://localhost:8000";
 
@@ -123,10 +125,15 @@ export default function Sidebar({
       `Delete corpus "${corpus.display_name}"? All documents in it will be permanently removed from GCP. This cannot be undone.`
     );
     if (!confirmed) return;
-  
+
+    const ref = corpusRef("rag", corpus);
     try {
-      await axios.delete(`${API}/corpora/`, {
-        params: { corpus_name: corpus.name }
+      await runBackendFlowStream({
+        engine: "rag",
+        action: "delete_corpus",
+        url: `${API}/corpora/?corpus_name=${encodeURIComponent(corpus.name)}`,
+        init: { method: "DELETE" },
+        base: ref,
       });
       setCorpora(prev => prev.filter(c => c.name !== corpus.name));
       if (selectedCorpus?.name === corpus.name) {
@@ -159,19 +166,43 @@ export default function Sidebar({
     setUploading(true);
     setUploadProgress(0);
     setError(null);
+    const corpusName = selectedCorpus.name;
+    const ref = { corpusName };
+    dispatchFlow({
+      engine: "rag",
+      action: "upload",
+      phase: "uploading",
+      filename: file.name,
+      progress: 0,
+      ...ref,
+    });
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await axios.post(`${API}/documents/upload`, formData, {
-        params: { corpus_name: selectedCorpus.name },
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: ev =>
-          setUploadProgress(Math.round((ev.loaded * 100) / ev.total)),
+      const result = await uploadWithFlowStream({
+        url: `${API}/documents/upload?corpus_name=${encodeURIComponent(corpusName)}`,
+        formData,
+        engine: "rag",
+        action: "upload",
+        base: { filename: file.name, highlightDoc: file.name, ...ref },
+        onUploadProgress: progress => setUploadProgress(progress),
       });
-      setFiles(prev => [...prev, res.data]);
+      const uploaded = result.file || {
+        name: result.name,
+        display_name: file.name,
+      };
+      setFiles(prev => [...prev, uploaded]);
       setUploadProgress(null);
     } catch {
       setError("Upload failed. Check file type and size.");
+      dispatchFlow({
+        engine: "rag",
+        action: "upload",
+        phase: "error",
+        filename: file.name,
+        error: "Upload failed",
+        ...ref,
+      });
     } finally {
       setUploading(false);
       fileInputRef.current.value = "";
@@ -182,16 +213,34 @@ export default function Sidebar({
       `Delete "${f.display_name}" from the corpus? This cannot be undone.`
     );
     if (!confirmed) return;
+    const ref = corpusRef("rag", selectedCorpus);
+    dispatchFlow({
+      engine: "rag",
+      action: "delete_file",
+      phase: "deleting",
+      filename: f.display_name,
+      removeDoc: f.display_name,
+      ...ref,
+    });
     try {
-      await axios.delete(`${API}/documents/`, {
-        params: {
-          corpus_name: selectedCorpus.name,
-          file_name: f.name,   // full GCP resource path
-        },
+      await runBackendFlowStream({
+        engine: "rag",
+        action: "delete_file",
+        url: `${API}/documents/?corpus_name=${encodeURIComponent(selectedCorpus.name)}&file_name=${encodeURIComponent(f.name)}`,
+        init: { method: "DELETE" },
+        base: { filename: f.display_name, removeDoc: f.display_name, ...ref },
       });
       setFiles(prev => prev.filter(file => file.name !== f.name));
     } catch {
       setError("Failed to delete file.");
+      dispatchFlow({
+        engine: "rag",
+        action: "delete_file",
+        phase: "error",
+        filename: f.display_name,
+        error: "Delete failed",
+        ...ref,
+      });
     }
   }
   // ── Conversations ─────────────────────────────────────────────────────────────

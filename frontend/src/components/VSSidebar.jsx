@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import { dispatchFlow, runFlowAnimation, corpusRef } from "../notesFlowEvents";
 
 const API = "http://localhost:8000";
 
@@ -117,8 +118,19 @@ export default function VSSidebar({
       `Delete datastore "${ds.display_name}"? All documents and conversations will be removed from GCP. This cannot be undone.`
     );
     if (!confirmed) return;
+    const ref = corpusRef("vs", ds);
     try {
-      await axios.delete(`${API}/vs-datastores/`, { params: { datastore_id: ds.datastore_id } });
+      await runFlowAnimation(
+        "vs",
+        "delete_datastore",
+        ref,
+        [
+          { step: "engine", message: "Deleting Search Engine…" },
+          { step: "datastore", message: "Deleting Discovery datastore…" },
+          { step: "postgres", message: "Clearing Postgres…" },
+        ],
+        () => axios.delete(`${API}/vs-datastores/`, { params: { datastore_id: ds.datastore_id } })
+      );
       setDatastores(prev => prev.filter(d => d.datastore_id !== ds.datastore_id));
       if (selectedDatastore?.datastore_id === ds.datastore_id) {
         onSelectDatastore(null);
@@ -162,6 +174,15 @@ export default function VSSidebar({
     setUploading(true);
     setUploadStatus("uploading");
     setError(null);
+    const ref = corpusRef("vs", selectedDatastore);
+    dispatchFlow({
+      engine: "vs",
+      action: "upload",
+      phase: "uploading",
+      filename: file.name,
+      progress: 0,
+      ...ref,
+    });
 
     const formData = new FormData();
     formData.append("file", file);
@@ -178,8 +199,28 @@ export default function VSSidebar({
           gcs_bucket:   selectedDatastore.gcs_bucket,
         },
         headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: ev => {
+          const progress = ev.total ? Math.round((ev.loaded * 100) / ev.total) : 0;
+          dispatchFlow({
+            engine: "vs",
+            action: "upload",
+            phase: "uploading",
+            filename: file.name,
+            progress,
+            ...ref,
+          });
+        },
       });
 
+      dispatchFlow({
+        engine: "vs",
+        action: "upload",
+        phase: "importing",
+        filename: file.name,
+        highlightDoc: file.name,
+        message: "GCS upload done · starting import…",
+        ...ref,
+      });
       setUploadStatus("importing");
 
       // Add to file list immediately with "importing" status
@@ -209,6 +250,23 @@ export default function VSSidebar({
                 ? { ...f, status: "imported" }
                 : f
             ));
+            dispatchFlow({
+              engine: "vs",
+              action: "upload",
+              phase: "complete",
+              filename: file.name,
+              highlightDoc: file.name,
+              ...ref,
+            });
+          } else {
+            dispatchFlow({
+              engine: "vs",
+              action: "upload",
+              phase: "importing",
+              filename: file.name,
+              message: `Importing… (${attempts * 10}s)`,
+              ...ref,
+            });
           }
         } catch {
           if (attempts >= maxAttempts) {
@@ -225,6 +283,14 @@ export default function VSSidebar({
         || "Upload failed. Check file type, billing, GCS permissions, and datastore ID.",
       );
       setUploadStatus("error");
+      dispatchFlow({
+        engine: "vs",
+        action: "upload",
+        phase: "error",
+        filename: file.name,
+        error: "Upload failed",
+        ...ref,
+      });
     } finally {
       setUploading(false);
       fileInputRef.current.value = "";
@@ -234,11 +300,22 @@ export default function VSSidebar({
   async function deleteFile(f) {
     const confirmed = window.confirm(`Delete "${f.display_name}" from the datastore? This cannot be undone.`);
     if (!confirmed) return;
+    const ref = corpusRef("vs", selectedDatastore);
+    dispatchFlow({
+      engine: "vs",
+      action: "delete_file",
+      phase: "deleting",
+      filename: f.display_name,
+      removeDoc: f.display_name,
+      ...ref,
+    });
     try {
       await axios.delete(`${API}/vs-documents/`, { params: { document_name: f.name } });
       setFiles(prev => prev.filter(file => file.name !== f.name));
+      dispatchFlow({ engine: "vs", action: "delete_file", phase: "complete", ...ref });
     } catch {
       setError("Failed to delete document");
+      dispatchFlow({ engine: "vs", action: "delete_file", phase: "error", error: "Delete failed", ...ref });
     }
   }
 

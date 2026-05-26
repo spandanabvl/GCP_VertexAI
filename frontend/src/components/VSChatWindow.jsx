@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
+import { dispatchFlow, corpusRef } from "../notesFlowEvents";
 
 const API = "http://localhost:8000";
+const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
 function formatAxiosDetail(e) {
   const d = e?.response?.data?.detail;
@@ -105,6 +107,12 @@ export default function VSChatWindow({
     ]);
     setLoading(true);
 
+    const ref = corpusRef("vs", selectedDatastore);
+    dispatchFlow({ engine: "vs", action: "chat", phase: "retrieving", message: "Vertex AI Search…", ...ref });
+    const genTimer = setTimeout(() => {
+      dispatchFlow({ engine: "vs", action: "chat", phase: "generating", message: "Summarizing…", ...ref });
+    }, 800);
+
     try {
       const res = await axios.post(`${API}/vs-chat/`, {
         datastore_id:    selectedDatastore.datastore_id,
@@ -112,6 +120,10 @@ export default function VSChatWindow({
         page_size:       pageSize,
         conversation_id: convId,
       });
+
+      clearTimeout(genTimer);
+      dispatchFlow({ engine: "vs", action: "chat", phase: "saving", message: "Saving conversation…", ...ref });
+      await delay(300);
 
       const { answer, sources, conversation_id } = res.data;
 
@@ -124,7 +136,10 @@ export default function VSChatWindow({
         setConvId(conversation_id);
         onNewConversation({ id: conversation_id, title: question.slice(0, 60) });
       }
+      dispatchFlow({ engine: "vs", action: "chat", phase: "complete", ...ref });
     } catch (e) {
+      clearTimeout(genTimer);
+      dispatchFlow({ engine: "vs", action: "chat", phase: "error", error: "Chat failed", ...ref });
       const detail = formatAxiosDetail(e);
       const status = e?.response?.status;
       if (status === 404) setConvId(null);

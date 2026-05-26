@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
+import { dispatchFlow, corpusRef } from "../notesFlowEvents";
+import { runBackendFlowStream } from "../flowStream";
 
 const API = "http://localhost:8000";
 
@@ -116,29 +118,40 @@ export default function ChatWindow({
     ]);
     setLoading(true);
 
+    const ref = corpusRef("rag", selectedCorpus);
+
     try {
-      const res = await axios.post(`${API}/chat/`, {
-        corpus_name:         selectedCorpus.name,
-        corpus_display_name: selectedCorpus.display_name,
-        question,
-        top_k:           5,
-        conversation_id: convId,  // null on first message → backend creates row
+      const result = await runBackendFlowStream({
+        engine: "rag",
+        action: "chat",
+        url: `${API}/chat/`,
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            corpus_name: selectedCorpus.name,
+            corpus_display_name: selectedCorpus.display_name,
+            question,
+            top_k: 5,
+            conversation_id: convId,
+          }),
+        },
+        base: ref,
       });
 
-      const { answer, chunks_used, conversation_id } = res.data;
+      const { answer, chunks_used, conversation_id } = result;
 
-      // Replace typing bubble with real answer
       setMessages(prev => [
         ...prev.slice(0, -1),
         { role: "assistant", text: answer, chunks_used },
       ]);
 
-      // If this was the first message, store the new conversation id
-      if (!convId) {
+      if (!convId && conversation_id) {
         setConvId(conversation_id);
         onNewConversation({ id: conversation_id, title: question.slice(0, 60) });
       }
     } catch {
+      dispatchFlow({ engine: "rag", action: "chat", phase: "error", error: "Chat failed", ...ref });
       setMessages(prev => [
         ...prev.slice(0, -1),
         {

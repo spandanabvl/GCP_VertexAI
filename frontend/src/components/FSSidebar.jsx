@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import { dispatchFlow, runFlowAnimation, corpusRef } from "../notesFlowEvents";
 
-const API = import.meta.env.VITE_API_URL ?? "";
+const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 function IconRefresh() {
   return (
@@ -104,8 +105,20 @@ export default function FSSidebar({
   async function deleteCorpus(corpus) {
     const ok = window.confirm(`Delete corpus "${corpus.display_name}"? All documents will be permanently removed. This cannot be undone.`);
     if (!ok) return;
+    const ref = corpusRef("fs", corpus);
     try {
-      await axios.delete(`${API}/fs-corpora/`, { params: { corpus_name: corpus.corpus_name } });
+      await runFlowAnimation(
+        "fs",
+        "delete_corpus",
+        ref,
+        [
+          { step: "files", message: "Deleting files…" },
+          { step: "corpus", message: "Deleting corpus…" },
+          { step: "infra", message: "BQ / Feature Store teardown…" },
+          { step: "postgres", message: "Removing metadata…" },
+        ],
+        () => axios.delete(`${API}/fs-corpora/`, { params: { corpus_name: corpus.corpus_name } })
+      );
       setCorpora(prev => prev.filter(c => c.corpus_name !== corpus.corpus_name));
       if (selectedCorpus?.corpus_name === corpus.corpus_name) {
         onSelectCorpus(null);
@@ -147,11 +160,28 @@ export default function FSSidebar({
           params: { feature_view_resource: selectedCorpus.feature_view_resource },
         });
         setSyncStatus(res.data.status);
+        if (selectedCorpus) {
+          dispatchFlow({
+            engine: "fs",
+            action: "upload",
+            phase: "syncing",
+            message: `Feature Store: ${res.data.status}`,
+            ...corpusRef("fs", selectedCorpus),
+          });
+        }
         if (res.data.done) {
           clearInterval(syncPollRef.current);
           setFiles(prev => prev.map(f =>
             f.status === "pending" ? { ...f, status: "synced" } : f
           ));
+          if (selectedCorpus) {
+            dispatchFlow({
+              engine: "fs",
+              action: "upload",
+              phase: "complete",
+              ...corpusRef("fs", selectedCorpus),
+            });
+          }
         }
       } catch {
         clearInterval(syncPollRef.current);
@@ -165,6 +195,15 @@ export default function FSSidebar({
     setUploading(true);
     setSyncStatus("uploading");
     setError(null);
+    const ref = corpusRef("fs", selectedCorpus);
+    dispatchFlow({
+      engine: "fs",
+      action: "upload",
+      phase: "uploading",
+      filename: file.name,
+      progress: 0,
+      ...ref,
+    });
 
     const formData = new FormData();
     formData.append("file", file);
@@ -176,6 +215,17 @@ export default function FSSidebar({
           feature_view_resource: selectedCorpus.feature_view_resource,
         },
         headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: ev => {
+          const progress = ev.total ? Math.round((ev.loaded * 100) / ev.total) : 0;
+          dispatchFlow({
+            engine: "fs",
+            action: "upload",
+            phase: "uploading",
+            filename: file.name,
+            progress,
+            ...ref,
+          });
+        },
       });
 
       setFiles(prev => [...prev, {
@@ -184,11 +234,28 @@ export default function FSSidebar({
         status:       "pending",
       }]);
 
+      dispatchFlow({
+        engine: "fs",
+        action: "upload",
+        phase: "syncing",
+        filename: res.data.display_name || file.name,
+        highlightDoc: res.data.display_name || file.name,
+        message: "Auto-sync to Feature Store…",
+        ...ref,
+      });
       setSyncStatus("sync_started");
       startSyncPolling();
     } catch {
       setError("Upload failed. Check file type and corpus.");
       setSyncStatus(null);
+      dispatchFlow({
+        engine: "fs",
+        action: "upload",
+        phase: "error",
+        filename: file.name,
+        error: "Upload failed",
+        ...ref,
+      });
     } finally {
       setUploading(false);
       fileInputRef.current.value = "";
@@ -199,6 +266,15 @@ export default function FSSidebar({
     const ok = window.confirm(`Delete "${f.display_name}"? This cannot be undone.`);
     if (!ok || !selectedCorpus) return;
     setError(null);
+    const ref = corpusRef("fs", selectedCorpus);
+    dispatchFlow({
+      engine: "fs",
+      action: "delete_file",
+      phase: "deleting",
+      filename: f.display_name,
+      removeDoc: f.display_name,
+      ...ref,
+    });
     try {
       await axios.delete(`${API}/fs-documents/`, {
         params: {
@@ -207,13 +283,22 @@ export default function FSSidebar({
         },
       });
       setFiles(prev => prev.filter(file => file.name !== f.name));
+      dispatchFlow({
+        engine: "fs",
+        action: "delete_file",
+        phase: "syncing",
+        message: "Re-syncing Feature Store…",
+        ...ref,
+      });
       if (selectedCorpus.feature_view_resource) {
         setSyncStatus("sync_started");
         startSyncPolling();
       }
+      dispatchFlow({ engine: "fs", action: "delete_file", phase: "complete", ...ref });
     } catch (err) {
       const detail = err.response?.data?.detail;
       setError(detail ? `Failed to delete file: ${detail}` : "Failed to delete file");
+      dispatchFlow({ engine: "fs", action: "delete_file", phase: "error", error: "Delete failed", ...ref });
     }
   }
 

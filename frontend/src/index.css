@@ -26,6 +26,10 @@
   --fs-purple-border: rgba(155, 135, 245, 0.45);
   --fs-teal: #5eead4;
   --fs-teal-bg: rgba(94, 234, 212, 0.1);
+  --info: #4a9eff;
+  --info-dim: #2a5a9a;
+  --info-glow: rgba(74, 158, 255, 0.35);
+  --info-bg: rgba(74, 158, 255, 0.08);
   --mono: 'DM Mono', monospace;
   --display: 'Syne', sans-serif;
   --sidebar-w: 290px;
@@ -671,7 +675,19 @@ html, body, #root {
 
 /* ── App layout with mode toggle bar ── */
 .app-shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-.app-body  { display: flex; flex: 1; overflow: hidden; }
+.app-body  { display: flex; flex: 1; overflow: hidden; position: relative; }
+
+.notes-layer {
+  display: none;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.notes-layer--open {
+  display: flex;
+}
 
 /* ── Mode toggle bar (top of entire app) ── */
 .mode-toggle-bar {
@@ -1342,6 +1358,670 @@ html, body, #root {
   background: #5ab4ef;
   border-radius: 3px;
   padding: 2px 6px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Notes — architecture view
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.notes-sidebar .notes-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px 0;
+}
+
+.notes-engine-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notes-engine-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 12px;
+  text-align: left;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  font-family: var(--mono);
+}
+
+.notes-engine-card:hover {
+  border-color: var(--border-bright);
+  background: var(--bg3);
+}
+
+.notes-engine-card.selected {
+  border-color: var(--accent);
+  background: var(--bg3);
+  box-shadow: inset 0 0 0 1px rgba(232, 224, 212, 0.15);
+}
+
+.notes-engine-card-name {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text0);
+}
+
+.notes-engine-card-desc {
+  font-size: 11px;
+  color: var(--text2);
+  line-height: 1.45;
+}
+
+.notes-engine-card-count {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text1);
+}
+
+.notes-main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.notes-graph-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.notes-graph-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg1);
+  flex-shrink: 0;
+}
+
+.notes-graph-title {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text0);
+}
+
+.notes-corpus-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.notes-corpus-select-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+
+.notes-corpus-select {
+  min-width: 200px;
+  max-width: 320px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.notes-graph-single-corpus {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.notes-graph-error {
+  margin: 8px 20px 0;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--red);
+  background: #2a1010;
+  border: 1px solid #4a1a1a;
+  border-radius: var(--radius);
+}
+
+.notes-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 32px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text2);
+  max-width: 480px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.notes-flow-container {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  background: var(--bg0);
+}
+
+.notes-flow-container .react-flow {
+  background: var(--bg0);
+}
+
+.notes-delete-legend {
+  position: absolute;
+  bottom: 12px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.notes-delete-legend-label {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+
+.notes-flow-controls {
+  background: var(--bg2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: none !important;
+}
+
+.notes-flow-controls button {
+  background: var(--bg2) !important;
+  border-bottom: 1px solid var(--border) !important;
+  fill: var(--text1) !important;
+  color: var(--text1) !important;
+}
+
+.notes-flow-controls button:hover {
+  background: var(--bg3) !important;
+}
+
+.notes-flow-controls button svg {
+  fill: var(--text1);
+}
+
+.react-flow__edge-text {
+  font-family: var(--mono);
+}
+
+.flow-node {
+  min-width: 148px;
+  max-width: 200px;
+  padding: 10px 12px;
+  background: #0f0f0f;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #f0ede8;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.flow-node-label {
+  font-weight: 500;
+  color: #f0ede8;
+  line-height: 1.35;
+}
+
+.flow-node-sub {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text2);
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.flow-node--infra {
+  border-color: #5eead4;
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.12);
+}
+
+.flow-node--storage {
+  border-color: #efb85a;
+  box-shadow: 0 0 0 1px rgba(239, 184, 90, 0.1);
+}
+
+.flow-node--vertex {
+  border-color: #e8e0d4;
+}
+
+.flow-node--user {
+  border-color: var(--border-bright);
+  border-style: dashed;
+}
+
+.flow-node--doc {
+  min-width: 120px;
+  max-width: 160px;
+  padding: 6px 10px;
+  font-size: 10px;
+  background: var(--bg2);
+  border-color: #4a4a4a;
+  color: var(--text1);
+}
+
+.flow-handle {
+  width: 6px !important;
+  height: 6px !important;
+  background: var(--border-bright) !important;
+  border: none !important;
+}
+
+.flow-node--live {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 12px rgba(232, 224, 212, 0.25);
+  animation: notes-node-pulse 1.2s ease-in-out infinite;
+}
+
+.flow-node--live-new {
+  border-color: var(--green) !important;
+  box-shadow: 0 0 10px var(--green-dim);
+}
+
+.flow-node--dim {
+  opacity: 0.35;
+  filter: grayscale(0.4);
+}
+
+/* ── Notes graph edges: static by default, marching dash when live ── */
+
+.notes-edge--solid .react-flow__edge-path {
+  stroke: #5a5a5a;
+  stroke-width: 1;
+}
+
+.notes-edge--dashed .react-flow__edge-path {
+  stroke: #4a4a4a;
+  stroke-width: 1;
+  stroke-dasharray: 6 4;
+}
+
+.notes-edge--idle .react-flow__edge-path {
+  opacity: 0.3;
+}
+
+/* Active path for current background action — dashed line moves along the edge */
+.notes-edge--active .react-flow__edge-path {
+  stroke: #e8e0d4 !important;
+  stroke-width: 2 !important;
+  stroke-dasharray: 10 7 !important;
+  animation: notes-edge-march 0.55s linear infinite;
+}
+
+.notes-edge--active .react-flow__edge-textbg {
+  fill: #0f0f0f !important;
+}
+
+.notes-edge--active .react-flow__edge-text {
+  fill: #f0ede8 !important;
+}
+
+.notes-flow-live--ingest .notes-edge--active.notes-edge--ingest .react-flow__edge-path {
+  stroke: #e8e0d4 !important;
+}
+
+.notes-flow-live--chat .notes-edge--active.notes-edge--chat .react-flow__edge-path {
+  stroke: #b8b4ae !important;
+}
+
+.notes-flow-live--delete_file .notes-edge--active.notes-edge--delete_file .react-flow__edge-path {
+  stroke: #efb85a !important;
+}
+
+.notes-flow-live--delete_corpus .notes-edge--active.notes-edge--delete_corpus .react-flow__edge-path {
+  stroke: #ef8a8a !important;
+}
+
+@keyframes notes-edge-march {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -17;
+  }
+}
+
+/* Disable React Flow default moving-dot animation if it ever gets enabled */
+.notes-flow-container .react-flow__edge.animated .react-flow__edge-path {
+  animation: notes-edge-march 0.55s linear infinite !important;
+  stroke-dasharray: 10 7 !important;
+}
+
+@keyframes notes-node-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(232, 224, 212, 0.15); }
+  50% { box-shadow: 0 0 16px rgba(232, 224, 212, 0.35); }
+}
+
+.notes-live-badge {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-bright);
+}
+
+.notes-live-badge--upload {
+  color: var(--amber);
+  background: #2a1a08;
+  border-color: #3a2a10;
+}
+
+.notes-live-badge--index {
+  color: var(--accent);
+  background: var(--bg3);
+  animation: notes-node-pulse 1.2s ease-in-out infinite;
+}
+
+.notes-live-badge--done {
+  color: var(--green);
+  background: var(--green-dim);
+  border-color: #3a6a4a;
+}
+
+.notes-live-badge--error {
+  color: var(--red);
+  background: #2a1010;
+  border-color: #4a1a1a;
+}
+
+/* ── RAG pipeline flow visualizer (Notes · RAG Managed DB) ── */
+.rag-flow-viz {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg1);
+}
+
+.rag-flow-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.rag-flow-pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  border: 0.5px solid var(--border-bright);
+  background: var(--bg2);
+  color: var(--text1);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.rag-flow-pill:hover {
+  border-color: var(--text2);
+  color: var(--text0);
+}
+
+.rag-flow-pill--active {
+  border-color: var(--info);
+  color: var(--info);
+  background: var(--info-bg);
+}
+
+.rag-flow-live-tag {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--info);
+}
+
+.rag-flow-canvas {
+  position: relative;
+  min-height: 132px;
+  padding: 8px 4px 4px;
+}
+
+.rag-flow-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.rag-flow-edge-path {
+  stroke: var(--border-bright);
+  stroke-width: 1;
+  fill: none;
+}
+
+.rag-flow-edge-path--dashed {
+  stroke-dasharray: 5 4;
+}
+
+.rag-flow-edge-path--live {
+  stroke: var(--info);
+}
+
+.rag-flow-edge-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--text2);
+}
+
+.rag-flow-travel-dot {
+  fill: var(--info);
+}
+
+.rag-flow-nodes {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rag-flow-node {
+  flex: 1;
+  min-width: 0;
+  max-width: 220px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 0.5px solid var(--border-bright);
+  background: var(--bg0);
+  opacity: 0.45;
+  transition: border-color 0.2s, opacity 0.25s, transform 0.4s ease;
+}
+
+.rag-flow-node--enter {
+  animation: rag-flow-node-in 0.4s ease forwards;
+}
+
+@keyframes rag-flow-node-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+}
+
+.rag-flow-node--active.rag-flow-node--enter,
+.rag-flow-node--done.rag-flow-node--enter {
+  animation-name: rag-flow-node-in-active;
+}
+
+@keyframes rag-flow-node-in-active {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.rag-flow-node--active {
+  opacity: 1;
+  border-color: var(--info);
+  box-shadow: 0 0 0 3px var(--info-glow);
+}
+
+.rag-flow-node--done {
+  opacity: 1;
+  border-color: var(--green);
+}
+
+.rag-flow-node--pending {
+  opacity: 0.4;
+}
+
+.rag-flow-badge {
+  display: inline-block;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  margin-bottom: 6px;
+  border: 0.5px solid var(--border);
+}
+
+.rag-flow-badge--teal {
+  color: var(--fs-teal);
+  border-color: rgba(94, 234, 212, 0.4);
+  background: var(--fs-teal-bg);
+}
+
+.rag-flow-badge--blue {
+  color: var(--info);
+  border-color: rgba(74, 158, 255, 0.45);
+  background: var(--info-bg);
+}
+
+.rag-flow-badge--amber {
+  color: var(--amber);
+  border-color: rgba(239, 184, 90, 0.4);
+  background: rgba(239, 184, 90, 0.1);
+}
+
+.rag-flow-badge--gray {
+  color: var(--text1);
+  border-color: var(--border-bright);
+  background: var(--bg2);
+}
+
+.rag-flow-node-title {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text0);
+  line-height: 1.3;
+}
+
+.rag-flow-node-sub {
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.rag-flow-progress-track {
+  height: 3px;
+  background: var(--bg3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.rag-flow-progress-fill {
+  height: 100%;
+  background: var(--info);
+  border-radius: 2px;
+  transition: width 0.35s ease;
+}
+
+.rag-flow-step-info {
+  font-size: 12px;
+  color: var(--text1);
+  line-height: 1.5;
+  min-height: 1.5em;
+}
+
+.rag-flow-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 10px;
+  color: var(--text2);
+}
+
+.rag-flow-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rag-flow-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 0.5px solid var(--border-bright);
+}
+
+.rag-flow-legend-dot--current {
+  background: var(--info);
+  border-color: var(--info);
+}
+
+.rag-flow-legend-dot--done {
+  background: var(--green);
+  border-color: var(--green);
+}
+
+.rag-flow-legend-dot--pending {
+  background: var(--bg3);
+}
+
+@media (prefers-color-scheme: light) {
+  .rag-flow-viz {
+    background: #f8f8f6;
+  }
+
+  .rag-flow-node {
+    background: #ffffff;
+    border-color: #d8d4cc;
+  }
+
+  .rag-flow-pill {
+    background: #ffffff;
+  }
+
+  .rag-flow-node-title {
+    color: #1a1a1a;
+  }
 }
 
 /* ── Vector Search stream note ── */

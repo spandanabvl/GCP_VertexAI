@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
+import { dispatchFlow, corpusRef } from "../notesFlowEvents";
 
-const API = import.meta.env.VITE_API_URL ?? "";
+const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
 function TypingDots() {
   return <div className="typing-dots"><span /><span /><span /></div>;
@@ -99,6 +101,9 @@ export default function FSChatWindow({
     ]);
     setLoading(true);
 
+    const ref = corpusRef("fs", selectedCorpus);
+    dispatchFlow({ engine: "fs", action: "chat", phase: "retrieving", message: "Hybrid RAG retrieval…", ...ref });
+
     try {
       const res = await axios.post(`${API}/fs-chat/`, {
         corpus_name:     selectedCorpus.corpus_name,
@@ -107,6 +112,9 @@ export default function FSChatWindow({
         alpha,
         conversation_id: convId,
       });
+
+      dispatchFlow({ engine: "fs", action: "chat", phase: "saving", message: "Saving conversation…", ...ref });
+      await delay(300);
 
       const { answer, conversation_id } = res.data;
 
@@ -119,7 +127,9 @@ export default function FSChatWindow({
         setConvId(conversation_id);
         onNewConversation({ id: conversation_id, title: question.slice(0, 60) });
       }
+      dispatchFlow({ engine: "fs", action: "chat", phase: "complete", ...ref });
     } catch {
+      dispatchFlow({ engine: "fs", action: "chat", phase: "error", error: "Chat failed", ...ref });
       setMessages(prev => [
         ...prev.slice(0, -1),
         { role: "assistant", text: "Something went wrong. Check that the backend is running." },
