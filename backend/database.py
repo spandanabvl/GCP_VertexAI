@@ -8,7 +8,7 @@ load_dotenv()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:spandana@localhost:5432/ragdb",
+    "postgresql://postgres:pranu@localhost:5432/ragdb1",
 )
 
 engine = create_engine(DATABASE_URL)

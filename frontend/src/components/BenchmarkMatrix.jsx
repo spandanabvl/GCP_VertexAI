@@ -4,6 +4,22 @@ import StarRating from "./StarRating";
 const ENGINE_ORDER = ["ragmanageddb", "vector_search_rag", "feature_store_rag"];
 const RESPONSES_ROW = "Generated Engine Responses";
 
+function estimateTokens(text) {
+  const t = (text || "").trim();
+  if (!t) return 0;
+  return Math.max(1, Math.floor(t.length / 4));
+}
+
+function normalizeChunk(chunk) {
+  if (typeof chunk === "string") {
+    return { text: chunk, tokens: estimateTokens(chunk) };
+  }
+  return {
+    text: chunk?.text ?? "",
+    tokens: Number.isFinite(chunk?.tokens) ? chunk.tokens : estimateTokens(chunk?.text),
+  };
+}
+
 function TogglePills({ badges }) {
   const list = Array.isArray(badges) ? badges : [];
   return (
@@ -80,24 +96,6 @@ export default function BenchmarkMatrix({ data, onReset }) {
         )}
       </header>
 
-      {data.latency_methodology && (
-        <details className="bm-latency-help">
-          <summary>How Processing Latency Speed is calculated</summary>
-          <div className="bm-latency-help-body">
-            <p><strong>Timed steps:</strong> {data.latency_methodology.measured_steps?.join(" → ")}</p>
-            {data.latency_methodology.excluded_steps?.length > 0 && (
-              <p><strong>Not timed:</strong> {data.latency_methodology.excluded_steps.join(" ")}</p>
-            )}
-            <p>{data.latency_methodology.per_question}</p>
-            <p>{data.latency_methodology.multi_question}</p>
-            {data.latency_methodology.quality_scores && (
-              <p>{data.latency_methodology.quality_scores}</p>
-            )}
-            <p className="bm-latency-example"><strong>Example:</strong> {data.latency_methodology.example}</p>
-          </div>
-        </details>
-      )}
-
       <div className="bm-table-scroll">
         <table className="bm-table">
           <thead>
@@ -156,16 +154,35 @@ export default function BenchmarkMatrix({ data, onReset }) {
           title={`Grounding Context — ${labels[groundingEngine] || groundingEngine}`}
           onClose={() => setGroundingEngine(null)}
         >
-          {(data.grounding?.[groundingEngine] || []).map((chunks, qi) => (
-            <div key={qi} className="bm-chunk-group">
-              <div className="bm-chunk-q">Question {qi + 1}</div>
-              {chunks?.length ? chunks.map((c, ci) => (
-                <pre key={ci} className="bm-chunk">{c}</pre>
-              )) : (
-                <p className="bm-muted">No chunks retrieved.</p>
-              )}
-            </div>
-          ))}
+          {(data.grounding?.[groundingEngine] || []).map((rawChunks, qi) => {
+            const chunks = (rawChunks || []).map(normalizeChunk);
+            const questionTokens = chunks.reduce((sum, c) => sum + c.tokens, 0);
+            return (
+              <div key={qi} className="bm-chunk-group">
+                <div className="bm-chunk-q">
+                  Question {qi + 1}
+                  {chunks.length > 0 && (
+                    <span className="bm-chunk-q-tokens">
+                      {questionTokens.toLocaleString()} tokens total
+                    </span>
+                  )}
+                </div>
+                {chunks.length ? chunks.map((c, ci) => (
+                  <div key={ci} className="bm-chunk-wrap">
+                    <div className="bm-chunk-head">
+                      <span className="bm-chunk-label">Chunk {ci + 1}</span>
+                      <span className="bm-chunk-tokens">
+                        {c.tokens.toLocaleString()} tokens
+                      </span>
+                    </div>
+                    <pre className="bm-chunk">{c.text}</pre>
+                  </div>
+                )) : (
+                  <p className="bm-muted">No chunks retrieved.</p>
+                )}
+              </div>
+            );
+          })}
         </ModalShell>
       )}
 

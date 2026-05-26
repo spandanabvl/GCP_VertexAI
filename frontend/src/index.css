@@ -2612,6 +2612,36 @@ html, body, #root {
   text-transform: uppercase;
   color: var(--amber);
   margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.bm-chunk-q-tokens {
+  font-size: 10px;
+  color: var(--text2);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.bm-chunk-wrap { margin-bottom: 10px; }
+.bm-chunk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.bm-chunk-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text2);
+  font-family: var(--mono);
+}
+.bm-chunk-tokens {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--amber);
+  white-space: nowrap;
 }
 .bm-chunk {
   font-family: var(--mono);

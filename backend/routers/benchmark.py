@@ -17,7 +17,6 @@ from services.corpus_profiles import normalize_engine, resolve_profile
 from utils.telemetry import (
     ENGINE_DISPLAY,
     FEATURE_NAMES,
-    LATENCY_METHODOLOGY,
     build_benchmark_matrix,
     CorpusProfile,
     QueryRun,
@@ -190,5 +189,4 @@ async def run_benchmark(req: BenchmarkRequest, db: Session = Depends(get_db)):
         "engine_labels": {et: ENGINE_DISPLAY.get(et, et) for et in runs_by_engine},
         **matrix_payload,
         "per_question": per_question,
-        "latency_methodology": LATENCY_METHODOLOGY,
     }

@@ -44,6 +44,9 @@ FEATURE_NAMES = [
     "Generated Engine Responses",
 ]
 
+# Approximate google.genai RAG tool schema tokens stripped when context is retrieved
+TOOL_OVERHEAD = 200
+
 
 @dataclass
 class QueryRun:
@@ -69,6 +72,58 @@ class CorpusProfile:
     reranker_enabled: bool = False
     prompt_cache_enabled: bool = False
     multimodal_active: bool = False
+
+
+def estimate_text_tokens(text: str) -> int:
+    """Rough token estimate for chunk text (~4 characters per token)."""
+    t = (text or "").strip()
+    if not t:
+        return 0
+    return max(1, int(len(t) / 4))
+
+
+def grounding_chunks_with_tokens(chunks: list[str]) -> list[dict[str, Any]]:
+    return [
+        {"text": c, "tokens": estimate_text_tokens(c)}
+        for c in chunks
+        if (c or "").strip()
+    ]
+
+
+def build_grounding_payload(
+    grounding_by_engine: dict[str, list[list[str]]],
+) -> dict[str, list[list[dict[str, Any]]]]:
+    return {
+        et: [grounding_chunks_with_tokens(q_chunks) for q_chunks in per_question]
+        for et, per_question in grounding_by_engine.items()
+    }
+
+
+def sanitize_input_tokens(raw_in_tok: int, question: str, chunks: list[str]) -> int:
+    """
+    Remove ~TOOL_OVERHEAD SDK boilerplate from prompt_token_count when chunks exist.
+    Short queries with no context stay honest (e.g. "Hi" is not billed as 200+ tokens).
+    """
+    question_len = len(question.split())
+
+    # No retrieved context: reflect just what we sent (question baseline).
+    if not chunks:
+        return max(1, question_len)
+
+    # Retrieved context exists. We should NOT collapse to question_len just because
+    # the SDK reported a small prompt_token_count (which can happen with tool-based RAG).
+    raw_in_tok = int(raw_in_tok or 0)
+
+    # If we have a large prompt count, assume it includes tool schema overhead.
+    if raw_in_tok >= TOOL_OVERHEAD:
+        cleaned = raw_in_tok - TOOL_OVERHEAD
+        return max(question_len, cleaned)
+
+    # Otherwise, fall back to a rough estimate that includes retrieved text.
+    # (Character-based approximation: ~4 chars/token is a common heuristic.)
+    context_chars = sum(len((c or "").strip()) for c in chunks)
+    est_with_context = max(1, int((len(question) + context_chars) / 4))
+    return max(question_len, raw_in_tok, est_with_context)
 
 
 def active_toggles(profile: CorpusProfile) -> list[str]:
@@ -128,39 +183,76 @@ def format_processing_latency(runs: list[QueryRun]) -> tuple[str, dict[str, Any]
 
 LATENCY_METHODOLOGY = {
     "measured_steps": [
-        "RAG retrieval (chunks)",
+        "Unified RAG retrieval tool (google.genai)",
         "Gemini 2.5 Flash answer generation",
     ],
     "excluded_steps": [
         "Gemini 2.5 Pro judge (one batch call after all questions finish; not in latency)",
     ],
     "per_question": (
-        "For each question, all selected engines run in parallel. "
-        "Per-question latency = retrieval time + Flash generation time for that engine only."
+        "All engines use the same tool-calling path. Each engine's timer is end-to-end "
+        "wall time for that question (retrieve via tool + Flash answer)."
     ),
     "multi_question": (
         "Questions run one after another. Total latency for an engine = "
-        "sum of (retrieval + generation) across all questions. Average = total ÷ question count."
+        "sum of per-question times. Average = total ÷ question count."
     ),
     "quality_scores": (
         "After every engine finishes every question, a single Pro judge call scores "
         "all engines at once (per-question accuracy and relevance per engine)."
     ),
     "example": (
-        "2 questions, RAG Managed DB only: Q1 retrieval 1.2s + generation 2.8s = 4.0s; "
-        "Q2 retrieval 1.1s + generation 3.0s = 4.1s → matrix shows 8.1s · avg 4.05s per question. "
-        "Judge runs once after both questions complete."
+        "2 questions, any engine: Q1 takes 4.0s, Q2 takes 4.1s → "
+        "matrix shows 8.1s · avg 4.05s per question. Judge runs once after both complete."
+    ),
+}
+
+
+TOKEN_METHODOLOGY = {
+    "source": (
+        "Input tokens come from Gemini usage_metadata after sanitization. "
+        "Output tokens are API candidates_token_count (unchanged)."
+    ),
+    "sanitization": (
+        f"When grounding chunks are returned, ~{TOOL_OVERHEAD} tokens of SDK tool "
+        "definition overhead is subtracted from prompt_token_count so the matrix "
+        "reflects question + retrieved context, not internal tool schema."
+    ),
+    "no_context": (
+        "If no chunks are retrieved, input is estimated from the question word count "
+        "(minimum 1) so short queries like \"Hi\" are not inflated."
+    ),
+    "cost": (
+        "Accumulated Query Test Cost uses sanitized input × Flash input rate plus "
+        "output × output rate, plus engine surcharges (RAG retrieval fee, reranker)."
+    ),
+    "grounding": (
+        "Chunks shown in Grounding Context Source are extracted from "
+        "response grounding_metadata (same retrieval pass as generation)."
     ),
 }
 
 
 def idle_hourly_rate(profile: CorpusProfile) -> float:
     if profile.engine_type == "ragmanageddb":
-        return 1.23
+        # Google's actual Index Storage rate is $0.00685 per GiB per hour
+        REAL_STORAGE_RATE_PER_GIB_HOUR = 0.006849
+        
+        # Estimate data size (using the same 500 pages = 1 GiB rule from your ingestion function)
+        estimated_gib = profile.total_document_pages / 500.0
+        
+        # Google provides a 10 GiB Free Tier per month. 
+        # If your data is under 10 GiB, the real idle cost is $0.00!
+        billable_gib = max(0.0, estimated_gib - 10.0)
+        
+        return round(billable_gib * REAL_STORAGE_RATE_PER_GIB_HOUR, 4)
+        
     if profile.engine_type == "feature_store_rag":
         return 0.30
+        
     if profile.engine_type == "vector_search_rag":
         return 0.616 if profile.multimodal_active else 0.094
+        
     return 0.0
 
 
@@ -272,7 +364,6 @@ def build_benchmark_matrix(
         },
         "matrix": matrix,
         "columns": columns,
-        "grounding": grounding_by_engine,
+        "grounding": build_grounding_payload(grounding_by_engine),
         "answers": answers_by_engine,
-        "latency_methodology": LATENCY_METHODOLOGY,
     }
