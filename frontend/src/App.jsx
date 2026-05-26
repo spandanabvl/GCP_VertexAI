@@ -222,7 +222,9 @@ export default function App() {
               <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
             </svg>
             Monitoring
-          {/* 5 — Notes (architecture) */}
+          </button>
+
+          {/* 6 — Notes (architecture) */}
           <button className={`mode-toggle-btn ${ragMode === "notes" ? "active" : ""}`} onClick={() => setRagMode("notes")}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
