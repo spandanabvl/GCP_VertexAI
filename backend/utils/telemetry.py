@@ -150,6 +150,12 @@ def setup_ingestion_fee(profile: CorpusProfile) -> float:
     return round(fee, 6)
 
 
+def format_setup_ingestion_fee(profile: CorpusProfile) -> str:
+    if profile.engine_type == "vector_search_rag":
+        return f"${VSR_INDEX_GIB_FEE:.2f} / GiB"
+    return f"${setup_ingestion_fee(profile):.4f}"
+
+
 def query_cost(profile: CorpusProfile, input_tokens: int, output_tokens: int) -> float:
     in_rate = CACHED_INPUT_RATE if profile.prompt_cache_enabled else INPUT_RATE
     cost = (input_tokens * in_rate) + (output_tokens * OUTPUT_RATE)
@@ -288,7 +294,7 @@ def build_engine_telemetry(
         ),
         "active_configuration_toggles": active_toggles(profile),
         "processing_latency_speed": latency_display,
-        "setup_ingestion_fee": f"${setup_ingestion_fee(profile):.4f}",
+        "setup_ingestion_fee": format_setup_ingestion_fee(profile),
         "accumulated_query_test_cost": cost_display,
         "continuous_idle_maintenance_rate": f"${idle_hourly_rate(profile):.3f} / hour",
         "total_words_processed_tokens": token_display,
